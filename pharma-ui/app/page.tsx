@@ -214,7 +214,7 @@ export default function Home() {
               <span className="text-sm font-semibold text-white">PG</span>
             </div>
             <div>
-              <h1 className="text-xl font-semibold">PharmaGuard</h1>
+              <h1 className="text-xl font-semibold">Pharmajdsjcjnjk</h1>
               <p className={`text-xs ${current.textSecondary}`}>Clinical Pharmacogenomics System</p>
             </div>
           </div>
