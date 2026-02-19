@@ -7,4 +7,5 @@ pharma-ui/node_modules/
 pharma-ui/dist/
 
 # Env files
-*.env
+.env
+.env.*
