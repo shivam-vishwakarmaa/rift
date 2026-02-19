@@ -1,0 +1,10 @@
+# Backend
+pharma-guard/venv/
+pharma-guard/__pycache__/
+
+# Frontend
+pharma-ui/node_modules/
+pharma-ui/dist/
+
+# Env files
+*.env
