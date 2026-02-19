@@ -1,97 +1,249 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
+
+// --- VISUALIZATION 1: Clinical Risk Speedometer ---
+const RiskGauge = ({
+  severity,
+  theme,
+}: {
+  severity: string;
+  theme: string;
+}) => {
+  const angleMap: Record<string, number> = {
+    none: -75,
+    low: -30,
+    moderate: 0,
+    high: 45,
+    critical: 75,
+  };
+  const rotation = angleMap[severity?.toLowerCase()] || -75;
+  const isDark = theme === "dark";
+
+  return (
+    <div className="flex flex-col items-center justify-center relative w-48 h-28 overflow-hidden">
+      <svg viewBox="0 0 200 100" className="w-full h-full drop-shadow-xl">
+        <path
+          d="M 20 90 A 80 80 0 0 1 180 90"
+          fill="none"
+          stroke={isDark ? "#333" : "#e2e8f0"}
+          strokeWidth="16"
+          strokeLinecap="round"
+        />
+        <defs>
+          <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#10b981" />
+            <stop offset="50%" stopColor="#f59e0b" />
+            <stop offset="100%" stopColor="#ef4444" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M 20 90 A 80 80 0 0 1 180 90"
+          fill="none"
+          stroke="url(#gaugeGradient)"
+          strokeWidth="16"
+          strokeLinecap="round"
+          className="opacity-80"
+        />
+        <g
+          style={{
+            transform: `rotate(${rotation}deg)`,
+            transformOrigin: "100px 90px",
+            transition: "transform 1.5s cubic-bezier(0.22, 1, 0.36, 1)",
+          }}
+        >
+          <polygon
+            points="96,90 104,90 100,25"
+            fill={isDark ? "#fff" : "#0f172a"}
+          />
+          <circle cx="100" cy="90" r="8" fill={isDark ? "#fff" : "#0f172a"} />
+          <circle cx="100" cy="90" r="3" fill={isDark ? "#050505" : "#fff"} />
+        </g>
+      </svg>
+      <div className="absolute bottom-0 text-[10px] font-bold uppercase tracking-widest text-white/70">
+        Severity Level
+      </div>
+    </div>
+  );
+};
+
+// --- VISUALIZATION 2: Metabolic Activity Spectrum ---
+const MetabolismSpectrum = ({
+  phenotype,
+  theme,
+}: {
+  phenotype: string;
+  theme: string;
+}) => {
+  const isDark = theme === "dark";
+  const pLower = phenotype?.toLowerCase() || "";
+
+  let activeIndex = 2;
+  if (pLower.includes("poor")) activeIndex = 0;
+  else if (pLower.includes("intermediate")) activeIndex = 1;
+  else if (pLower.includes("normal")) activeIndex = 2;
+  else if (pLower.includes("rapid")) activeIndex = 3;
+  else if (pLower.includes("ultrarapid")) activeIndex = 4;
+
+  const nodes = [
+    { label: "Poor", short: "PM" },
+    { label: "Intermediate", short: "IM" },
+    { label: "Normal", short: "NM" },
+    { label: "Rapid", short: "RM" },
+    { label: "Ultra", short: "UM" },
+  ];
+
+  return (
+    <div className="w-full mt-4">
+      <div className="flex justify-between items-center relative z-10">
+        <div
+          className={`absolute top-1/2 left-0 w-full h-1 -translate-y-1/2 -z-10 ${isDark ? "bg-[#333]" : "bg-slate-200"} rounded-full`}
+        ></div>
+        <div
+          className="absolute top-1/2 left-0 h-1 -translate-y-1/2 -z-10 bg-blue-500 rounded-full transition-all duration-1000 ease-out"
+          style={{ width: `${(activeIndex / 4) * 100}%` }}
+        ></div>
+        {nodes.map((node, i) => {
+          const isActive = i === activeIndex;
+          const isPast = i <= activeIndex;
+          return (
+            <div key={node.short} className="flex flex-col items-center gap-2">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-500 ${isActive ? "bg-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.6)] scale-125" : isPast ? "bg-blue-500/50 text-white/80" : isDark ? "bg-[#222] text-gray-500" : "bg-white border-2 border-slate-200 text-slate-400"}`}
+              >
+                {node.short}
+              </div>
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? (isDark ? "text-blue-400" : "text-blue-600") : isDark ? "text-gray-500" : "text-gray-400"}`}
+              >
+                {node.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
-  const [drug, setDrug] = useState('CLOPIDOGREL');
+  
+  // --- SMART TAG STATE ---
+  const [selectedDrugs, setSelectedDrugs] = useState<string[]>(["CLOPIDOGREL", "WARFARIN"]);
+  const [drugInput, setDrugInput] = useState("");
+  
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [activeDemo, setActiveDemo] = useState<string | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
 
-  // Load theme from localStorage on mount
+  const AVAILABLE_DRUGS = [
+    "CLOPIDOGREL", "SIMVASTATIN", "CODEINE", 
+    "WARFARIN", "AZATHIOPRINE", "FLUOROURACIL"
+  ];
+
+  const suggestedDrugs = AVAILABLE_DRUGS.filter(d => 
+    d.toLowerCase().includes(drugInput.toLowerCase()) && !selectedDrugs.includes(d)
+  );
+
+  const addDrug = (drugToAdd: string) => {
+    if (!selectedDrugs.includes(drugToAdd)) {
+      setSelectedDrugs([...selectedDrugs, drugToAdd]);
+    }
+    setDrugInput("");
+  };
+
+  const removeDrug = (drugToRemove: string) => {
+    setSelectedDrugs(selectedDrugs.filter(d => d !== drugToRemove));
+  };
+
   useEffect(() => {
-    const savedTheme = localStorage.getItem('pharmaguard-theme') as 'light' | 'dark' || 'light';
+    const savedTheme =
+      (localStorage.getItem("pharmaguard-theme") as "light" | "dark") || "dark";
     setTheme(savedTheme);
   }, []);
 
-  // Toggle theme and save to localStorage
   const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
+    const newTheme = theme === "light" ? "dark" : "light";
     setTheme(newTheme);
-    localStorage.setItem('pharmaguard-theme', newTheme);
+    localStorage.setItem("pharmaguard-theme", newTheme);
   };
 
   const loadDemoPatient = async (type: string) => {
     setLoading(true);
     setResult(null);
     setActiveDemo(type);
-    
-    const demos: Record<string, { drug: string; file: string; label: string }> = {
-      normal: { 
-        drug: 'CLOPIDOGREL', 
-        file: 'normal_metabolizer.vcf',
-        label: 'Normal Metabolizer'
-      },
-      intermediate: { 
-        drug: 'WARFARIN', 
-        file: 'intermediate_metabolizer.vcf',
-        label: 'Intermediate Risk'
-      },
-      poor: { 
-        drug: 'CODEINE', 
-        file: 'poor_metabolizer.vcf',
-        label: 'Poor Metabolizer'
-      },
-      rapid: { 
-        drug: 'CODEINE', 
-        file: 'rapid_metabolizer.vcf',
-        label: 'Rapid Metabolizer'
-      }
-    };
-    
+
+    const demos: Record<string, { drug: string; file: string; label: string }> =
+      {
+        normal: {
+          drug: "CLOPIDOGREL",
+          file: "normal_metabolizer.vcf",
+          label: "Normal Metabolizer",
+        },
+        intermediate: {
+          drug: "WARFARIN, CODEINE",
+          file: "intermediate_metabolizer.vcf",
+          label: "Intermediate Risk",
+        },
+        poor: {
+          drug: "CODEINE",
+          file: "poor_metabolizer.vcf",
+          label: "Poor Metabolizer",
+        },
+        rapid: {
+          drug: "CODEINE",
+          file: "rapid_metabolizer.vcf",
+          label: "Rapid Metabolizer",
+        },
+      };
+
     const demo = demos[type];
     if (!demo) return;
-    
-    setDrug(demo.drug);
-    
+
+    setSelectedDrugs(demo.drug.split(",").map(d => d.trim()));
+
     try {
       const response = await fetch(`/sample_vcfs/${demo.file}`);
-      if (!response.ok) throw new Error('Sample file not found');
+      if (!response.ok) throw new Error("Sample file not found");
       const blob = await response.blob();
-      const file = new File([blob], demo.file, { type: 'text/plain' });
+      const file = new File([blob], demo.file, { type: "text/plain" });
       setFile(file);
-      
+
       const formData = new FormData();
-      formData.append('vcf', file);
-      formData.append('drug', demo.drug);
-      
-      const apiRes = await fetch('http://127.0.0.1:8000/analyze', {
-        method: 'POST',
+      formData.append("vcf", file);
+      formData.append("drugs", demo.drug);
+
+      const apiRes = await fetch("http://127.0.0.1:8000/analyze/batch", {
+        method: "POST",
         body: formData,
       });
       const data = await apiRes.json();
       setResult(data);
     } catch (error) {
       console.error("Demo failed:", error);
-      alert("Demo patient unavailable. Please upload your own VCF file.");
+      alert(
+        "Demo patient unavailable. Please ensure files are in public/sample_vcfs/",
+      );
     }
     setLoading(false);
   };
 
   const handleAnalyze = async () => {
     if (!file) return alert("Please upload a VCF file");
+    if (selectedDrugs.length === 0) return alert("Please select at least one drug");
+    
     setLoading(true);
     setResult(null);
     setActiveDemo(null);
-    
+
     const formData = new FormData();
-    formData.append('vcf', file);
-    formData.append('drug', drug);
+    formData.append("vcf", file);
+    formData.append("drugs", selectedDrugs.join(","));
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/analyze', {
-        method: 'POST',
+      const res = await fetch("http://127.0.0.1:8000/analyze/batch", {
+        method: "POST",
         body: formData,
       });
       const data = await res.json();
@@ -106,196 +258,247 @@ export default function Home() {
   const copyToClipboard = () => {
     if (!result) return;
     navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-    alert('JSON copied to clipboard!');
+    alert("JSON copied to clipboard!");
   };
 
   const downloadJSON = () => {
     if (!result) return;
-    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(result, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `pharmaguard_${result.drug}_${result.patient_id || 'result'}.json`;
+    a.download = `pharmaguard_${selectedDrugs[0] || "Patient"}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const getRiskBadge = (risk: string) => {
-    switch(risk) {
-      case 'Safe':
-        return { 
-          bg: theme === 'light' ? 'bg-emerald-100' : 'bg-emerald-900/30',
-          text: theme === 'light' ? 'text-emerald-800' : 'text-emerald-300',
-          icon: '✓',
-          label: 'Safe'
+  const getRiskUI = (risk: string) => {
+    switch (risk) {
+      case "Safe":
+        return {
+          gradient: "from-emerald-500 to-teal-600",
+          bg: theme === "light"
+              ? "bg-emerald-50 border-emerald-200"
+              : "bg-emerald-950/20 border-emerald-900/50",
+          text: theme === "light" ? "text-emerald-700" : "text-emerald-400",
+          icon: "✨",
+          shadow: "shadow-[0_0_30px_rgba(16,185,129,0.2)]",
         };
-      case 'Adjust Dosage':
-        return { 
-          bg: theme === 'light' ? 'bg-amber-100' : 'bg-amber-900/30',
-          text: theme === 'light' ? 'text-amber-800' : 'text-amber-300',
-          icon: '⚠️',
-          label: 'Adjust Dosage'
+      case "Adjust Dosage":
+        return {
+          gradient: "from-amber-400 to-orange-500",
+          bg: theme === "light"
+              ? "bg-amber-50 border-amber-200"
+              : "bg-amber-950/20 border-amber-900/50",
+          text: theme === "light" ? "text-amber-700" : "text-amber-400",
+          icon: "⚖️",
+          shadow: "shadow-[0_0_30px_rgba(245,158,11,0.2)]",
         };
-      case 'Toxic':
-        return { 
-          bg: theme === 'light' ? 'bg-red-100' : 'bg-red-900/30',
-          text: theme === 'light' ? 'text-red-800' : 'text-red-300',
-          icon: '⛔',
-          label: 'Toxic'
-        };
-      case 'Ineffective':
-        return { 
-          bg: theme === 'light' ? 'bg-orange-100' : 'bg-orange-900/30',
-          text: theme === 'light' ? 'text-orange-800' : 'text-orange-300',
-          icon: '✗',
-          label: 'Ineffective'
+      case "Toxic":
+      case "Ineffective":
+        return {
+          gradient: "from-rose-500 to-red-700",
+          bg: theme === "light"
+              ? "bg-rose-50 border-rose-200"
+              : "bg-rose-950/20 border-rose-900/50",
+          text: theme === "light" ? "text-rose-700" : "text-rose-400",
+          icon: "⚠️",
+          shadow: "shadow-[0_0_30px_rgba(225,29,72,0.2)]",
         };
       default:
-        return { 
-          bg: theme === 'light' ? 'bg-gray-100' : 'bg-gray-800',
-          text: theme === 'light' ? 'text-gray-800' : 'text-gray-300',
-          icon: '?',
-          label: 'Unknown'
+        return {
+          gradient: "from-gray-500 to-slate-600",
+          bg: theme === "light"
+              ? "bg-gray-50 border-gray-200"
+              : "bg-gray-900/50 border-gray-800",
+          text: theme === "light" ? "text-gray-700" : "text-gray-400",
+          icon: "🔍",
+          shadow: "",
         };
     }
   };
 
-  // Theme-based classes
   const themeClasses = {
     light: {
-      bg: 'bg-gray-50',
-      card: 'bg-white',
-      border: 'border-gray-200',
-      text: 'text-gray-900',
-      textSecondary: 'text-gray-600',
-      textMuted: 'text-gray-500',
-      headerBg: 'bg-white',
-      headerBorder: 'border-gray-200',
-      inputBg: 'bg-white',
-      inputBorder: 'border-gray-300',
-      buttonPrimary: 'bg-blue-600 hover:bg-blue-700 text-white',
-      buttonSecondary: 'bg-gray-100 hover:bg-gray-200 text-gray-700',
-      accent: 'text-blue-600',
-      accentBg: 'bg-blue-50',
-      codeBg: 'bg-gray-50',
-      codeText: 'text-blue-800',
-      jsonBg: 'bg-gray-50',
+      bg: "bg-[#f8fafc]",
+      card: "bg-white shadow-xl shadow-slate-200/50",
+      border: "border-slate-200",
+      text: "text-slate-900",
+      textSecondary: "text-slate-600",
+      textMuted: "text-slate-500",
+      inputBg: "bg-slate-50",
+      inputBorder:
+        "border-slate-200 focus:border-blue-500 focus:ring-blue-500/20",
+      buttonPrimary:
+        "bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20",
+      buttonSecondary:
+        "bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-sm",
+      jsonBg: "bg-[#0f172a]",
+      jsonText: "text-blue-300",
     },
     dark: {
-      bg: 'bg-[#121212]',
-      card: 'bg-[#1A1A1A]',
-      border: 'border-[#2A2A2A]',
-      text: 'text-[#E4E4E7]',
-      textSecondary: 'text-[#A0A0A0]',
-      textMuted: 'text-[#6B6B6B]',
-      headerBg: 'bg-[#1A1A1A]',
-      headerBorder: 'border-[#2A2A2A]',
-      inputBg: 'bg-[#25252D]',
-      inputBorder: 'border-[#3A3A3A]',
-      buttonPrimary: 'bg-[#2563EB] hover:bg-[#1D4ED8] text-white',
-      buttonSecondary: 'bg-[#25252D] hover:bg-[#2A2A2A] text-[#E4E4E7]',
-      accent: 'text-[#93C5FD]',
-      accentBg: 'bg-[#1E3A8A]/20',
-      codeBg: 'bg-[#25252D]',
-      codeText: 'text-[#93C5FD]',
-      jsonBg: 'bg-[#1A1A1A]',
-    }
+      bg: "bg-[#050505]",
+      card: "bg-[#111111] shadow-2xl shadow-black border border-[#222]",
+      border: "border-[#222]",
+      text: "text-white",
+      textSecondary: "text-gray-400",
+      textMuted: "text-gray-500",
+      inputBg: "bg-[#1a1a1a]",
+      inputBorder: "border-[#333] focus:border-blue-500 focus:ring-blue-500/20",
+      buttonPrimary:
+        "bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_20px_rgba(37,99,235,0.3)]",
+      buttonSecondary:
+        "bg-[#1a1a1a] border border-[#333] hover:bg-[#222] text-gray-300",
+      jsonBg: "bg-[#0a0a0a]",
+      jsonText: "text-blue-400",
+    },
   };
 
   const current = themeClasses[theme];
 
   return (
-    <div className={`min-h-screen ${current.bg} ${current.text} font-sans antialiased transition-colors duration-200`}>
-      {/* Header */}
-      <header className={`border-b ${current.headerBorder} ${current.headerBg} sticky top-0 z-50`}>
+    <div
+      className={`min-h-screen ${current.bg} ${current.text} font-sans antialiased transition-colors duration-300 selection:bg-blue-500/30`}
+    >
+      <header
+        className={`sticky top-0 z-50 backdrop-blur-md border-b ${theme === "dark" ? "bg-black/50 border-[#222]" : "bg-white/70 border-slate-200"}`}
+      >
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-              <span className="text-sm font-semibold text-white">PG</span>
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <span className="text-xl">🧬</span>
             </div>
             <div>
-              <h1 className="text-xl font-semibold">Pharmajdsjcjnjk</h1>
-              <p className={`text-xs ${current.textSecondary}`}>Clinical Pharmacogenomics System</p>
+              <h1 className="text-xl font-bold tracking-tight">PharmaGuard</h1>
+              <p
+                className={`text-xs font-medium ${current.textMuted} tracking-wider uppercase`}
+              >
+                Clinical Decision Support
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Theme Toggle */}
+          <div className="flex items-center gap-4">
             <button
               onClick={toggleTheme}
-              className={`p-2 rounded-lg ${current.buttonSecondary} transition-colors`}
-              aria-label="Toggle theme"
+              className={`p-2.5 rounded-xl ${current.buttonSecondary} transition-all`}
             >
-              {theme === 'light' ? (
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              )}
+              {theme === "light" ? "🌙" : "☀️"}
             </button>
-            <span className={`px-2 py-1 rounded text-xs ${current.buttonSecondary}`}>v2.0</span>
-            <span className={`px-2 py-1 rounded text-xs ${current.accentBg} ${current.accent}`}>CPIC Guidelines</span>
+            <span
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg`}
+            >
+              RIFT 2026
+            </span>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-6 py-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Panel - Input Section */}
-          <div className="lg:col-span-4 space-y-6">
-            {/* Patient Data Card */}
-            <div className={`${current.card} rounded-xl border ${current.border} p-6`}>
-              <h2 className={`text-sm font-medium ${current.textMuted} uppercase tracking-wider mb-4`}>Patient Data</h2>
-              
-              {/* Demo Patient Tags */}
-              <div className="mb-6">
-                <p className={`text-xs ${current.textMuted} mb-3`}>Demo Patients</p>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { type: 'normal', label: 'Normal Metabolizer' },
-                    { type: 'intermediate', label: 'Intermediate Risk' },
-                    { type: 'poor', label: 'Poor Metabolizer' },
-                    { type: 'rapid', label: 'Rapid Metabolizer' }
-                  ].map((demo) => (
-                    <button
-                      key={demo.type}
-                      onClick={() => loadDemoPatient(demo.type)}
-                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                        activeDemo === demo.type 
-                          ? 'bg-blue-600 text-white' 
-                          : current.buttonSecondary
-                      }`}
-                    >
-                      {demo.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {/* Left Panel - Input Controls */}
+          <div className="lg:col-span-4 space-y-6 animate-fade-in-up">
+            <div className={`${current.card} rounded-2xl p-6`}>
+              <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                Patient Context
+              </h2>
 
-              <div className="space-y-5">
+              <div className="space-y-6">
                 <div>
-                  <label className={`block text-xs ${current.textMuted} mb-2`}>Target Medication</label>
-                  <select 
-                    className={`w-full ${current.inputBg} border ${current.inputBorder} px-4 py-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all appearance-none cursor-pointer`}
-                    onChange={(e) => setDrug(e.target.value)}
-                    value={drug}
+                  <label
+                    className={`block text-xs font-bold ${current.textMuted} uppercase tracking-wider mb-3`}
                   >
-                    <option>Clopidogrel (Plavix) - Antiplatelet</option>
-                    <option>Simvastatin (Zocor) - Cholesterol</option>
-                    <option>Codeine - Pain Management</option>
-                    <option>Warfarin (Coumadin) - Anticoagulant</option>
-                    <option>Azathioprine (Imuran) - Immunosuppressant</option>
-                    <option>Fluorouracil (5-FU) - Chemotherapy</option>
-                  </select>
+                    Quick Load Demos
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { type: "normal", label: "NM Profile", emoji: "✅" },
+                      {
+                        type: "intermediate",
+                        label: "IM Profile",
+                        emoji: "⚠️",
+                      },
+                      { type: "poor", label: "PM Profile", emoji: "⛔" },
+                      { type: "rapid", label: "UM Profile", emoji: "⚡" },
+                    ].map((demo) => (
+                      <button
+                        key={demo.type}
+                        onClick={() => loadDemoPatient(demo.type)}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2 ${activeDemo === demo.type ? "bg-blue-600 text-white shadow-md shadow-blue-500/30" : current.buttonSecondary}`}
+                      >
+                        {demo.emoji} {demo.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <hr className={current.border} />
+
+                {/* SMART BATCH PROCESSING INPUT */}
+                <div className="relative z-20">
+                  <label className={`block text-xs font-bold ${current.textMuted} uppercase tracking-wider mb-2`}>
+                    Target Medication(s)
+                  </label>
+                  
+                  {/* The Tag Input Box */}
+                  <div className={`flex flex-wrap gap-2 w-full ${current.inputBg} border ${current.inputBorder} p-2 rounded-xl focus-within:ring-2 focus-within:ring-blue-500/20 transition-all min-h-[52px] items-center`}>
+                    {selectedDrugs.map(d => (
+                      <span key={d} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-500 text-white shadow-sm`}>
+                        {d}
+                        <button 
+                          onClick={() => removeDrug(d)}
+                          className="hover:bg-blue-600 rounded-full w-4 h-4 flex items-center justify-center transition-colors ml-1"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                    <input 
+                      type="text"
+                      placeholder={selectedDrugs.length === 0 ? "Type drug name (e.g. CODEINE)" : "Add drug..."}
+                      className={`flex-1 bg-transparent outline-none min-w-[120px] px-2 text-sm font-medium ${current.text}`}
+                      value={drugInput}
+                      onChange={(e) => setDrugInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && suggestedDrugs.length > 0) {
+                          e.preventDefault();
+                          addDrug(suggestedDrugs[0]); 
+                        }
+                      }}
+                    />
+                  </div>
+
+                  {/* The Auto-Complete Dropdown Menu */}
+                  {drugInput.length > 0 && suggestedDrugs.length > 0 && (
+                    <div className={`absolute z-50 w-full mt-2 rounded-xl shadow-xl border ${current.border} ${current.card} overflow-hidden animate-fade-in-up`}>
+                      {suggestedDrugs.map(d => (
+                        <div 
+                          key={d}
+                          onClick={() => addDrug(d)}
+                          className={`px-4 py-3 text-sm font-bold cursor-pointer transition-colors flex items-center gap-2 hover:bg-blue-500 hover:text-white ${current.text}`}
+                        >
+                          <span className="text-lg opacity-70">💊</span> {d}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <p className={`text-[10px] mt-2 ${current.textMuted}`}>
+                    Select multiple to run simultaneous CPIC batch analysis.
+                  </p>
                 </div>
 
                 <div>
-                  <label className={`block text-xs ${current.textMuted} mb-2`}>Genomic File (.vcf)</label>
-                  <div className="relative">
-                    <input 
-                      type="file" 
+                  <label
+                    className={`block text-xs font-bold ${current.textMuted} uppercase tracking-wider mb-2`}
+                  >
+                    Genomic Data (.VCF)
+                  </label>
+                  <div className="relative group">
+                    <input
+                      type="file"
                       accept=".vcf"
                       className="hidden"
                       id="file-upload"
@@ -303,201 +506,311 @@ export default function Home() {
                     />
                     <label
                       htmlFor="file-upload"
-                      className={`flex items-center justify-between w-full ${current.inputBg} border ${current.inputBorder} rounded-lg px-4 py-2.5 cursor-pointer hover:border-gray-400 transition-colors`}
+                      className={`flex flex-col items-center justify-center w-full ${current.inputBg} border-2 border-dashed ${current.inputBorder} rounded-xl px-4 py-6 cursor-pointer group-hover:border-blue-500 transition-colors`}
                     >
-                      <span className={`text-sm ${current.textMuted} truncate max-w-[200px]`}>
-                        {file ? file.name : 'Choose VCF file...'}
-                      </span>
-                      <span className={`text-xs ${current.buttonSecondary} px-3 py-1 rounded`}>
-                        Browse
+                      <span className="text-2xl mb-2">📁</span>
+                      <span
+                        className={`text-sm font-medium ${file ? current.text : current.textMuted} truncate max-w-[200px]`}
+                      >
+                        {file ? file.name : "Click to upload .VCF file"}
                       </span>
                     </label>
                   </div>
                 </div>
 
-                <button 
+                <button
                   onClick={handleAnalyze}
                   disabled={loading}
-                  className={`w-full ${current.buttonPrimary} py-3 rounded-lg font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2`}
+                  className={`w-full ${current.buttonPrimary} py-4 rounded-xl font-bold text-sm tracking-wide uppercase transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  {loading ? (
-                    <>
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      <span>Analyzing...</span>
-                    </>
-                  ) : (
-                    <span>Run Analysis</span>
-                  )}
+                  {loading
+                    ? "Processing Pipeline..."
+                    : "Run Pharmacogenomic Analysis"}
                 </button>
-              </div>
-            </div>
-
-            {/* Drug List - Badges */}
-            <div className={`${current.card} rounded-xl border ${current.border} p-6`}>
-              <h3 className={`text-xs font-medium ${current.textMuted} uppercase tracking-wider mb-4`}>Supported Drugs & Genes</h3>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  'CYP2D6 • Codeine',
-                  'CYP2C9 • Warfarin',
-                  'CYP2C19 • Clopidogrel',
-                  'SLCO1B1 • Simvastatin',
-                  'TPMT • Azathioprine',
-                  'DPYD • Fluorouracil'
-                ].map((item, i) => (
-                  <div key={i} className={`${current.inputBg} px-3 py-2 rounded-lg text-xs ${current.textMuted}`}>
-                    {item}
-                  </div>
-                ))}
               </div>
             </div>
           </div>
 
-          {/* Right Panel - Results Section */}
-          <div className="lg:col-span-8 space-y-6">
-            {!result ? (
-              <div className={`${current.card} rounded-xl border ${current.border} p-12 flex items-center justify-center`}>
-                <div className="text-center">
-                  <div className={`text-6xl mb-4 ${current.textMuted}`}>🧬</div>
-                  <h3 className={`text-lg font-medium ${current.textSecondary} mb-2`}>Ready to Analyze</h3>
-                  <p className={`text-sm ${current.textMuted}`}>Upload a VCF file or select a demo patient</p>
+          {/* Right Panel - Results Dashboard */}
+          <div className="lg:col-span-8">
+            {!result && !loading ? (
+              <div
+                className={`${current.card} rounded-2xl h-full min-h-[500px] flex flex-col items-center justify-center border-dashed border-2 ${current.border} animate-fade-in-up`}
+                style={{ animationDelay: "0.1s" }}
+              >
+                <div
+                  className={`w-24 h-24 mb-6 rounded-full ${theme === "dark" ? "bg-[#1a1a1a]" : "bg-slate-100"} flex items-center justify-center`}
+                >
+                  <span className="text-4xl">🔬</span>
                 </div>
+                <h3 className="text-xl font-bold mb-2">
+                  Awaiting Genomic Data
+                </h3>
+                <p
+                  className={`text-sm ${current.textMuted} max-w-sm text-center`}
+                >
+                  Upload a standard Variant Call Format (.vcf) file to generate
+                  CPIC-aligned clinical recommendations.
+                </p>
+              </div>
+            ) : loading ? (
+              <div
+                className={`${current.card} rounded-2xl h-full min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden`}
+              >
+                <div className="absolute top-0 left-0 w-full h-1 bg-blue-500/20">
+                  <div className="h-full bg-blue-500 w-1/3 animate-[scan_2s_ease-in-out_infinite]"></div>
+                </div>
+                <div className="relative">
+                  <div className="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xl">
+                    🧬
+                  </div>
+                </div>
+                <h3 className="text-lg font-bold mt-6 animate-pulse text-blue-500">
+                  Parsing Variants & Inferring Diplotype...
+                </h3>
+                <p className={`text-sm ${current.textMuted} mt-2`}>
+                  Cross-referencing CPIC guidelines
+                </p>
               </div>
             ) : result.error ? (
-              <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl p-8 text-center">
-                <div className="text-4xl mb-4 text-red-500">⚠️</div>
-                <h3 className="text-lg font-medium text-red-800 dark:text-red-400 mb-2">Analysis Error</h3>
-                <p className="text-sm text-red-600 dark:text-red-300/70">{result.error}</p>
+              <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-8 text-center animate-fade-in-up">
+                <span className="text-5xl block mb-4">⚠️</span>
+                <h3 className="text-xl font-bold text-red-500 mb-2">
+                  Pipeline Execution Failed
+                </h3>
+                <p className="text-red-400/80">{result.error}</p>
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* Risk Assessment Card */}
-                <div className={`${current.card} rounded-xl border ${current.border} p-6`}>
-                  {/* Header with risk badge */}
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <p className={`text-xs ${current.textMuted} uppercase tracking-wider mb-1`}>Risk Assessment</p>
-                      <div className="flex items-center gap-3">
-                        <h2 className="text-2xl font-semibold">
-                          {result.risk_assessment.risk_label}
-                        </h2>
-                        <span className={`px-2 py-1 rounded-md text-xs font-medium ${getRiskBadge(result.risk_assessment.risk_label).bg} ${getRiskBadge(result.risk_assessment.risk_label).text}`}>
-                          {getRiskBadge(result.risk_assessment.risk_label).icon} {result.risk_assessment.severity}
-                        </span>
-                      </div>
-                    </div>
+              // NOTE: Added ID 'clinical-report' here for PDF generation
+              <div
+                id="clinical-report"
+                className="space-y-6 animate-fade-in-up p-2"
+              >
+                {/* PDF Generation Header (hidden in actual PDF render) */}
+                <div
+                  className="flex justify-between items-center bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl print:hidden"
+                  data-html2canvas-ignore
+                >
+                  <div>
+                    <h3 className="font-bold text-blue-500">
+                      Analysis Complete
+                    </h3>
+                    <p className={`text-xs ${current.textMuted}`}>
+                      Generated at {new Date().toLocaleTimeString()}
+                    </p>
                   </div>
+                  <button
+                    onClick={() => window.print()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2 transition-all print:hidden"
+                  >
+                    📄 Download PDF Report
+                  </button>
+                </div>
 
-                  {/* Gene Info Grid */}
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className={`${current.inputBg} p-4 rounded-lg`}>
-                      <p className={`text-xs ${current.textMuted} mb-1`}>Primary Gene</p>
-                      <p className="font-mono text-lg">{result.pharmacogenomic_profile.primary_gene}</p>
-                    </div>
-                    <div className={`${current.inputBg} p-4 rounded-lg`}>
-                      <p className={`text-xs ${current.textMuted} mb-1`}>Phenotype</p>
-                      <p className="font-mono text-lg">{result.pharmacogenomic_profile.phenotype}</p>
-                    </div>
-                    <div className={`${current.inputBg} p-4 rounded-lg`}>
-                      <p className={`text-xs ${current.textMuted} mb-1`}>Diplotype</p>
-                      <p className="font-mono text-lg">{result.pharmacogenomic_profile.diplotype}</p>
-                    </div>
-                  </div>
+                {/* 1. Hero Risk Card */}
+                <div
+                  className={`relative overflow-hidden rounded-2xl p-8 text-white bg-gradient-to-br ${getRiskUI(result.risk_assessment.risk_label).gradient} ${getRiskUI(result.risk_assessment.risk_label).shadow}`}
+                >
+                  <div
+                    className="absolute inset-0 opacity-10"
+                    style={{
+                      backgroundImage:
+                        "radial-gradient(circle at 2px 2px, white 1px, transparent 0)",
+                      backgroundSize: "24px 24px",
+                    }}
+                  ></div>
 
-                  {/* Clinical Recommendation - Alert Banner */}
-                  <div className={`mb-6 p-4 rounded-lg flex items-start gap-3 ${
-                    result.risk_assessment.risk_label === 'Toxic' || result.risk_assessment.risk_label === 'Ineffective'
-                      ? theme === 'light' ? 'bg-red-50 border-l-4 border-red-500' : 'bg-red-950/30 border-l-4 border-red-500'
-                      : result.risk_assessment.risk_label === 'Adjust Dosage'
-                      ? theme === 'light' ? 'bg-amber-50 border-l-4 border-amber-500' : 'bg-amber-950/30 border-l-4 border-amber-500'
-                      : theme === 'light' ? 'bg-gray-50 border-l-4 border-gray-400' : 'bg-[#25252D] border-l-4 border-[#4A4A4A]'
-                  }`}>
-                    <span className="text-xl">
-                      {result.risk_assessment.risk_label === 'Toxic' ? '⛔' :
-                       result.risk_assessment.risk_label === 'Ineffective' ? '✗' :
-                       result.risk_assessment.risk_label === 'Adjust Dosage' ? '⚠️' : 'ℹ️'}
-                    </span>
-                    <div>
-                      <p className={`text-xs ${current.textMuted} mb-1`}>Clinical Recommendation</p>
-                      <p className="text-sm font-medium">{result.clinical_recommendation.action}</p>
-                      <p className={`text-xs ${current.textMuted} mt-1`}>{result.clinical_recommendation.guideline_source}</p>
+                  <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex-1">
+                      <span className="inline-block px-3 py-1 bg-white/20 backdrop-blur-md rounded-lg text-xs font-bold tracking-widest uppercase mb-4">
+                        Primary Risk: {result.drug}
+                      </span>
+                      <h2 className="text-4xl md:text-5xl font-black mb-2 flex items-center gap-3">
+                        {getRiskUI(result.risk_assessment.risk_label).icon}{" "}
+                        {result.risk_assessment.risk_label}
+                      </h2>
+                      <p className="text-white/80 text-lg font-medium">
+                        Patient exhibits{" "}
+                        <strong className="text-white">
+                          {result.pharmacogenomic_profile.phenotype}
+                        </strong>{" "}
+                        trait for {result.pharmacogenomic_profile.primary_gene}.
+                      </p>
                     </div>
-                  </div>
 
-                  {/* Detected Variants */}
-                  {result.pharmacogenomic_profile?.detected_variants?.length > 0 && (
-                    <div className="mb-6">
-                      <p className={`text-xs ${current.textMuted} uppercase tracking-wider mb-3`}>Detected Variants</p>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        {result.pharmacogenomic_profile.detected_variants.slice(0, 8).map((v: any, i: number) => (
-                          <a
-                            key={i}
-                            href={`https://www.ncbi.nlm.nih.gov/snp/${v.rsid}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`${current.inputBg} p-3 rounded-lg hover:bg-opacity-80 transition-colors group`}
-                          >
-                            <div className={`font-mono text-xs ${current.accent} group-hover:${theme === 'light' ? 'text-blue-800' : 'text-white'} mb-1`}>{v.rsid}</div>
-                            <div className={`text-xs ${current.textMuted}`}>{v.gene}</div>
-                          </a>
-                        ))}
-                      </div>
+                    <div className="flex flex-col items-center bg-black/20 backdrop-blur-sm p-4 rounded-2xl border border-white/10 shrink-0">
+                      <RiskGauge
+                        severity={result.risk_assessment.severity}
+                        theme={theme}
+                      />
                     </div>
-                  )}
-
-                  {/* Comprehensive Panel */}
-                  {result.comprehensive_panel && (
-                    <div className="mb-6">
-                      <p className={`text-xs ${current.textMuted} uppercase tracking-wider mb-3`}>Comprehensive Drug Panel</p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {Object.entries(result.comprehensive_panel).map(([drug, data]: [string, any]) => {
-                          const badge = getRiskBadge(data.risk_label);
-                          return (
-                            <div key={drug} className={`${current.inputBg} p-4 rounded-lg`}>
-                              <div className="font-medium text-sm mb-2">{drug}</div>
-                              <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${badge.bg} ${badge.text} mb-2`}>
-                                <span>{badge.icon}</span>
-                                <span>{data.risk_label}</span>
-                              </div>
-                              <div className={`text-xs ${current.textMuted}`}>{data.gene}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* AI Explanation */}
-                  <div className={`${current.inputBg} p-4 rounded-lg`}>
-                    <p className={`text-xs ${current.textMuted} uppercase tracking-wider mb-2`}>AI Generated Mechanism</p>
-                    <p className={`text-sm ${current.textSecondary} mb-2 italic`}>"{result.llm_generated_explanation.summary}"</p>
-                    <p className={`text-sm ${current.textMuted} leading-relaxed`}>{result.llm_generated_explanation.mechanism}</p>
                   </div>
                 </div>
 
-                {/* JSON Output */}
-                <div className={`${current.card} rounded-xl border ${current.border} overflow-hidden`}>
-                  <div className={`${current.inputBg} px-4 py-3 border-b ${current.border} flex justify-between items-center`}>
-                    <span className={`text-xs font-mono ${current.textMuted}`}>JSON Output</span>
+                {/* 2. Clinical Action Banner */}
+                <div
+                  className={`${current.card} rounded-2xl p-6 border-l-4 ${getRiskUI(result.risk_assessment.risk_label).text.replace("text-", "border-")}`}
+                >
+                  <h3
+                    className={`text-xs font-bold ${current.textMuted} uppercase tracking-wider mb-2`}
+                  >
+                    CPIC Guideline Action
+                  </h3>
+                  <p className="text-xl font-medium mb-3 leading-relaxed">
+                    {result.clinical_recommendation.action}
+                  </p>
+                  <div
+                    className={`inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg ${current.inputBg}`}
+                  >
+                    <span className="text-blue-500">📚</span>{" "}
+                    {result.clinical_recommendation.guideline_source}
+                  </div>
+                </div>
+
+                {/* --- BATCH ANALYSIS RESULTS --- */}
+                {result.batch_analysis &&
+                  Object.keys(result.batch_analysis).length > 0 && (
+                    <div
+                      className={`${current.card} rounded-2xl p-6 border-l-4 border-indigo-500`}
+                    >
+                      <h3
+                        className={`text-xs font-bold ${current.textMuted} uppercase tracking-wider mb-4`}
+                      >
+                        Additional Processed Medications
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {Object.entries(result.batch_analysis).map(
+                          ([batchDrug, batchData]: [string, any]) => {
+                            const ui = getRiskUI(batchData.risk_label);
+                            return (
+                              <div
+                                key={batchDrug}
+                                className={`p-4 rounded-xl border ${current.border} ${current.inputBg} flex justify-between items-center`}
+                              >
+                                <div>
+                                  <h4 className="font-bold mb-1">
+                                    {batchDrug}
+                                  </h4>
+                                  <p className={`text-xs ${current.textMuted}`}>
+                                    {batchData.gene} • {batchData.phenotype}
+                                  </p>
+                                </div>
+                                <div
+                                  className={`px-3 py-1 rounded-lg text-xs font-bold ${ui.bg} ${ui.text}`}
+                                >
+                                  {ui.icon} {batchData.risk_label}
+                                </div>
+                              </div>
+                            );
+                          },
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                {/* 3. Genetic Profile & Spectrum Grid */}
+                <div className="grid grid-cols-1 gap-6">
+                  <div className={`${current.card} rounded-2xl p-6`}>
+                    <h3
+                      className={`text-xs font-bold ${current.textMuted} uppercase tracking-wider mb-4`}
+                    >
+                      Biomarker Translation & Activity Spectrum
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                      <div className="space-y-4">
+                        <div
+                          className={`flex justify-between items-center p-3 rounded-xl ${current.inputBg}`}
+                        >
+                          <span className={`text-sm ${current.textSecondary}`}>
+                            Target Gene
+                          </span>
+                          <span className="font-mono font-bold text-blue-500">
+                            {result.pharmacogenomic_profile.primary_gene}
+                          </span>
+                        </div>
+                        <div
+                          className={`flex justify-between items-center p-3 rounded-xl ${current.inputBg}`}
+                        >
+                          <span className={`text-sm ${current.textSecondary}`}>
+                            Inferred Diplotype
+                          </span>
+                          <span className="font-mono font-bold text-indigo-500">
+                            {result.pharmacogenomic_profile.diplotype}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        className={`p-5 rounded-xl border ${current.border} ${theme === "dark" ? "bg-[#1a1a1a]/50" : "bg-slate-50"}`}
+                      >
+                        <h4
+                          className={`text-[10px] uppercase font-bold tracking-widest ${current.textMuted} mb-6 text-center`}
+                        >
+                          Metabolic Phenotype Mapping
+                        </h4>
+                        <MetabolismSpectrum
+                          phenotype={result.pharmacogenomic_profile.phenotype}
+                          theme={theme}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`${current.card} rounded-2xl p-6 relative overflow-hidden group`}
+                  >
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500 opacity-50"></div>
+                    <div className="flex justify-between items-start mb-3">
+                      <h3
+                        className={`text-xs font-bold ${current.textMuted} uppercase tracking-wider flex items-center gap-2`}
+                      >
+                        <span className="text-purple-500">✨</span> AI Mechanism
+                        Explanation
+                      </h3>
+                    </div>
+                    <p className={`text-sm font-medium ${current.text} mb-3`}>
+                      "{result.llm_generated_explanation.summary}"
+                    </p>
+                    <p
+                      className={`text-sm ${current.textSecondary} leading-relaxed`}
+                    >
+                      {result.llm_generated_explanation.mechanism}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 4. Raw JSON Output Toggle (ignored in PDF) */}
+                <div
+                  className={`${current.card} rounded-2xl overflow-hidden print:hidden`}
+                  data-html2canvas-ignore
+                >
+                  <div
+                    className={`${current.inputBg} px-6 py-4 flex justify-between items-center border-b ${current.border}`}
+                  >
+                    <span
+                      className={`text-xs font-bold font-mono tracking-wider uppercase ${current.textMuted}`}
+                    >
+                      Raw Pipeline Output (JSON)
+                    </span>
                     <div className="flex gap-2">
                       <button
                         onClick={copyToClipboard}
-                        className={`text-xs ${current.buttonSecondary} px-3 py-1 rounded transition-colors`}
+                        className={`text-xs font-medium ${current.buttonSecondary} px-4 py-2 rounded-lg`}
                       >
                         Copy
                       </button>
                       <button
                         onClick={downloadJSON}
-                        className={`text-xs ${current.buttonSecondary} px-3 py-1 rounded transition-colors`}
+                        className={`text-xs font-medium ${current.buttonSecondary} px-4 py-2 rounded-lg`}
                       >
-                        Download
+                        Export
                       </button>
                     </div>
                   </div>
-                  <div className={`p-4 overflow-x-auto max-h-96 overflow-y-auto ${current.jsonBg}`}>
-                    <pre className={`text-xs font-mono ${current.codeText}`}>
+                  <div className="p-6 overflow-x-auto max-h-96 overflow-y-auto bg-[#0a0a0a]">
+                    <pre className="text-[13px] font-mono leading-relaxed text-blue-400">
                       {JSON.stringify(result, null, 2)}
                     </pre>
                   </div>
@@ -507,13 +820,6 @@ export default function Home() {
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className={`border-t ${current.border} mt-12 py-6`}>
-        <div className="max-w-7xl mx-auto px-6 text-center text-xs ${current.textMuted}">
-          <p>PharmaGuard — RIFT 2026 • CPIC Guidelines • Clinical Decision Support</p>
-        </div>
-      </footer>
     </div>
   );
 }

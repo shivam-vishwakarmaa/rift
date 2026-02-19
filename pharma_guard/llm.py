@@ -19,7 +19,6 @@ def get_explanation(drug, phenotype, variants):
         models_res = requests.get(models_url)
         models_data = models_res.json()
         
-        # Find all models that this specific API key is allowed to use for text generation
         valid_models = [
             m['name'] for m in models_data.get('models', []) 
             if 'generateContent' in m.get('supportedGenerationMethods', [])
@@ -28,30 +27,42 @@ def get_explanation(drug, phenotype, variants):
         if not valid_models:
             return get_fallback(phenotype, "API Key has no access to any generative models.")
             
-        # Prefer a 'flash' model for speed, otherwise just use the first available one
         target_model = next((m for m in valid_models if 'flash' in m), valid_models[0])
         print(f"SUCCESS: Auto-selected model -> {target_model}")
         
     except Exception as e:
-        print(f"Failed to auto-discover models: {e}")
-        # Absolute newest fallback if discovery fails
-        target_model = "models/gemini-2.0-flash" 
-        
-    # --- STEP 2: GENERATE THE EXPLANATION ---
-    url = f"{host}/v1beta/{target_model}:generateContent?key={api_key}"
-    
+        print(f"Model Discovery Error: {e}")
+        target_model = "models/gemini-1.5-flash"
+
+    # --- STEP 2: THE "FAKE RAG" CONTEXT INJECTION ---
+    clinical_knowledge = {
+        "Poor metabolizer": f"{drug} metabolism is severely impaired. For prodrugs (like Codeine or Clopidogrel), this means the drug cannot convert to its active form, making it ineffective. For active drugs (like Warfarin or Fluorouracil), this means the drug builds up in the blood, causing severe toxicity.",
+        "Intermediate metabolizer": f"Reduced metabolism of {drug}. This creates a moderate risk of toxicity for active drugs, or mildly reduced efficacy for prodrugs. Dosage adjustments are strictly required.",
+        "Normal metabolizer": f"Standard enzymatic metabolism. {drug} can be processed normally. Standard CPIC dosing guidelines apply.",
+        "Rapid metabolizer": f"Accelerated metabolism. Prodrugs may convert too quickly (causing toxicity), while active drugs may be cleared too fast (causing ineffectiveness).",
+        "Ultrarapid metabolizer": f"Greatly accelerated metabolism. High risk of severe, life-threatening toxicity for prodrugs like Codeine due to massive rapid conversion to morphine."
+    }
+
+    # Grab the specific medical truth for this patient's phenotype
+    context = clinical_knowledge.get(phenotype, "Standard pharmacogenomic pathway for this phenotype.")
+
+    # Force the AI to use ONLY our context
     prompt = (
-        f"Act as a clinical pharmacologist. Explain why a patient "
-        f"with a {phenotype} phenotype has altered risk for {drug}. "
-        f"Provide the response strictly as a raw JSON object with exactly two keys: "
-        f"'summary' (1 sentence) and 'mechanism' (brief biological explanation). "
+        f"You are an expert clinical pharmacogeneticist.\n"
+        f"PATIENT PROFILE: Taking {drug}. Genetic phenotype: {phenotype}.\n\n"
+        f"CLINICAL TRUTH (DO NOT DEVIATE): {context}\n\n"
+        f"Using ONLY the clinical truth above, write a short explanation of the biological mechanism. "
+        f"Return ONLY valid JSON with two keys: 'summary' (1 sentence) and 'mechanism' (brief biological explanation). "
         f"Do not include any markdown formatting, backticks, or extra text. Just the JSON."
     )
+    
+    url = f"{host}/v1beta/{target_model}:generateContent?key={api_key}"
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}]
     }
     
+    # --- STEP 3: EXECUTE ---
     try:
         response = requests.post(url, json=payload)
         

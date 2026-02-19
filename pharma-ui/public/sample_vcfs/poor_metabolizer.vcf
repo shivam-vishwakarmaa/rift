@@ -1,0 +1,6 @@
+##fileformat=VCFv4.2
+##source=PharmaGuard_Sequencing_Simulator
+##reference=GRCh38
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	PATIENT_PM
+22	42522624	rs1065852	C	T	99.9	PASS	.	GT	1/1
